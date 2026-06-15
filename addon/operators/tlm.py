@@ -608,6 +608,101 @@ class TLM_AtlasListMoveItem(bpy.types.Operator):
             return{'CANCELLED'}
         return{'FINISHED'}
 
+def _tlm_atlas_area_by_name(context):
+    """Sum world-space surface area (m^2) of AtlasGroupA-assigned lightmap
+    objects, grouped by atlas name. One evaluated pass over the scene."""
+    import bmesh
+    deps = context.evaluated_depsgraph_get()
+    areas = {}
+    for obj in context.scene.objects:
+        if obj.type != 'MESH':
+            continue
+        op = obj.TLM_ObjectProperties
+        if not op.tlm_mesh_lightmap_use:
+            continue
+        if op.tlm_mesh_lightmap_unwrap_mode != "AtlasGroupA":
+            continue
+        name = op.tlm_atlas_pointer
+        if not name:
+            continue
+        obj_eval = obj.evaluated_get(deps)
+        me = obj_eval.to_mesh()
+        bm = bmesh.new()
+        bm.from_mesh(me)
+        bm.transform(obj.matrix_world)
+        areas[name] = areas.get(name, 0.0) + sum(f.calc_area() for f in bm.faces)
+        bm.free()
+        obj_eval.to_mesh_clear()
+    return areas
+
+def _tlm_refresh_atlas_stats(context):
+    areas = _tlm_atlas_area_by_name(context)
+    for atlas in context.scene.TLM_AtlasList:
+        atlas.tlm_atlas_total_area = areas.get(atlas.name, 0.0)
+
+class TLM_AtlasAssignSelected(bpy.types.Operator):
+    bl_idname = "tlm.atlas_assign_selected"
+    bl_label = "Assign"
+    bl_description = "Assign selected mesh objects to the active atlas group (sets the Atlas Group unwrap mode)"
+
+    @classmethod
+    def poll(cls, context):
+        return len(context.scene.TLM_AtlasList) > 0 and context.scene.TLM_AtlasListItem >= 0
+
+    def execute(self, context):
+        scene = context.scene
+        atlas = scene.TLM_AtlasList[scene.TLM_AtlasListItem]
+        count = 0
+        for obj in context.selected_objects:
+            if obj.type != 'MESH':
+                continue
+            op = obj.TLM_ObjectProperties
+            op.tlm_mesh_lightmap_use = True
+            op.tlm_mesh_lightmap_unwrap_mode = "AtlasGroupA"
+            op.tlm_atlas_pointer = atlas.name
+            count += 1
+        _tlm_refresh_atlas_stats(context)
+        self.report({'INFO'}, "Assigned %d object(s) to '%s'" % (count, atlas.name))
+        return {'FINISHED'}
+
+class TLM_AtlasSelectObjects(bpy.types.Operator):
+    bl_idname = "tlm.atlas_select_objects"
+    bl_label = "Select"
+    bl_description = "Select all objects assigned to the active atlas group"
+
+    @classmethod
+    def poll(cls, context):
+        return len(context.scene.TLM_AtlasList) > 0 and context.scene.TLM_AtlasListItem >= 0
+
+    def execute(self, context):
+        scene = context.scene
+        atlas = scene.TLM_AtlasList[scene.TLM_AtlasListItem]
+        for obj in context.view_layer.objects:
+            obj.select_set(False)
+        count = 0
+        active = None
+        for obj in context.view_layer.objects:
+            op = obj.TLM_ObjectProperties
+            if (op.tlm_mesh_lightmap_use
+                    and op.tlm_mesh_lightmap_unwrap_mode == "AtlasGroupA"
+                    and op.tlm_atlas_pointer == atlas.name):
+                obj.select_set(True)
+                active = obj
+                count += 1
+        if active is not None:
+            context.view_layer.objects.active = active
+        self.report({'INFO'}, "Selected %d object(s) in '%s'" % (count, atlas.name))
+        return {'FINISHED'}
+
+class TLM_AtlasRefreshStats(bpy.types.Operator):
+    bl_idname = "tlm.atlas_refresh_stats"
+    bl_label = "Refresh stats"
+    bl_description = "Recompute total surface area and texel density for every atlas group"
+
+    def execute(self, context):
+        _tlm_refresh_atlas_stats(context)
+        return {'FINISHED'}
+
 class TLM_StartServer(bpy.types.Operator):
     bl_idname = "tlm.start_server"
     bl_label = "Start Network Server"

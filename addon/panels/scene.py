@@ -631,6 +631,11 @@ class TLM_PT_Additional(bpy.types.Panel):
         col.operator("tlm_atlaslist.delete_item", icon='REMOVE', text="")
         col.menu("TLM_MT_AtlasListSpecials", icon='DOWNARROW_HLT', text="")
 
+        row = layout.row(align=True)
+        row.operator("tlm.atlas_assign_selected", icon='IMPORT')
+        row.operator("tlm.atlas_select_objects", icon='RESTRICT_SELECT_OFF')
+        row.operator("tlm.atlas_refresh_stats", icon='FILE_REFRESH', text="")
+
         if atlasListItem >= 0 and len(atlasList) > 0:
             item = atlasList[atlasListItem]
             layout.prop(item, "tlm_atlas_lightmap_unwrap_mode")
@@ -641,15 +646,15 @@ class TLM_PT_Additional(bpy.types.Panel):
                 layout.prop(item, "tlm_atlas_pack_margin")
                 layout.prop(item, "tlm_atlas_pack_shape")
 
-            amount = 0
-
-            for obj in bpy.context.scene.objects:
-                if obj.TLM_ObjectProperties.tlm_mesh_lightmap_use:
-                    if obj.TLM_ObjectProperties.tlm_mesh_lightmap_unwrap_mode == "AtlasGroupA":
-                        if obj.TLM_ObjectProperties.tlm_atlas_pointer == item.name:
-                            amount = amount + 1
-
-            layout.label(text="Objects: " + str(amount))
+            area = item.tlm_atlas_total_area
+            res = int(item.tlm_atlas_lightmap_resolution)
+            td = (res / (area ** 0.5)) if area > 0.0 else 0.0
+            box = layout.box()
+            box.label(text="Surface area: %.2f m²" % area)
+            if td > 0.0:
+                box.label(text="Texel density: %d px/m" % td)
+            else:
+                box.label(text="Texel density: refresh stats to compute")
             layout.prop(item, "tlm_atlas_merge_samemat")
 
             # layout.prop(item, "tlm_use_uv_packer")

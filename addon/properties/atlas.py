@@ -13,9 +13,14 @@ class TLM_AtlasListItem(bpy.types.PropertyGroup):
                  ('2048', '2048', 'TODO'),
                  ('4096', '4096', 'TODO'),
                  ('8192', '8192', 'TODO')],
-                name = "Atlas Lightmap Resolution", 
+                name = "Atlas Lightmap Resolution",
                 description="TODO",
                 default='256')
+
+    tlm_atlas_total_area : FloatProperty(
+        name="Total surface area",
+        description="Cached world-space surface area (m²) of all objects assigned to this atlas. Use 'Refresh stats' to recompute",
+        default=0.0)
 
     tlm_atlas_unwrap_margin : FloatProperty(
         name="Unwrap Margin", 
@@ -88,21 +93,16 @@ class TLM_UL_AtlasList(bpy.types.UIList):
 
         if self.layout_type in {'DEFAULT', 'COMPACT'}:
 
-            amount = 0
+            area = item.tlm_atlas_total_area
+            res = int(item.tlm_atlas_lightmap_resolution)
+            td = (res / (area ** 0.5)) if area > 0.0 else 0.0
 
-            for obj in bpy.context.scene.objects:
-                if obj.TLM_ObjectProperties.tlm_mesh_lightmap_use:
-                    if obj.TLM_ObjectProperties.tlm_mesh_lightmap_unwrap_mode == "AtlasGroupA":
-                        if obj.TLM_ObjectProperties.tlm_atlas_pointer == item.name:
-                            amount = amount + 1
-
-            row = layout.row()
-            row.prop(item, "name", text="", emboss=False, icon=custom_icon)
-            col = row.column()
-            col.label(text=item.tlm_atlas_lightmap_resolution)
-            col = row.column()
-            col.alignment = 'RIGHT'
-            col.label(text=str(amount))
+            split = layout.split(factor=0.4)
+            split.prop(item, "name", text="", emboss=False, icon=custom_icon)
+            metrics = split.row()
+            metrics.label(text="%s px" % item.tlm_atlas_lightmap_resolution)
+            metrics.label(text=("%.1f m²" % area) if area > 0.0 else "— m²")
+            metrics.label(text=("%d px/m" % td) if td > 0.0 else "— px/m")
 
         elif self.layout_type in {'GRID'}:
             layout.alignment = 'CENTER'

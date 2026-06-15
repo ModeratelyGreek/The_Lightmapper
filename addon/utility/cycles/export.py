@@ -26,6 +26,7 @@ import math
 from time import time
 
 from . import lightmap, prepare
+from .. import console
 
 TEMP_SCENE_NAME = "__TLM_Export_Temp"
 LM_UV = "UVMap_Lightmap"
@@ -52,6 +53,7 @@ def _log(msg):
 # --------------------------------------------------------------------------- #
 
 def export_glb(operator, context):
+    console.disable_quick_edit()   # ensure a console click can't freeze the long bake
     scene0 = context.scene
     eng = scene0.TLM_EngineProperties
     sp = scene0.TLM_SceneProperties
@@ -214,6 +216,17 @@ def _prepare_targets(targets, vl):
         o.hide_render = False
         if o.data.users > 1:
             o.data = o.data.copy()
+        # Repair invalid mesh data on the copy. A corrupt mesh (out-of-range
+        # indices / bad customdata) makes modifier evaluation read out of bounds
+        # and HARD-CRASH Blender (EXCEPTION_ACCESS_VIOLATION) — most notably the
+        # "Smooth by Angle" geometry-nodes modifier's edge_angle field, which
+        # glTF export evaluates via export_apply=True. validate() runs on the
+        # throwaway copy, so the user's original mesh is never touched.
+        try:
+            if o.data.validate(verbose=False):
+                print("[TLM Export] repaired invalid mesh on '%s'" % o.name)
+        except Exception as e:
+            print("[TLM Export] mesh validate failed on '%s': %s" % (o.name, e))
         for slot in o.material_slots:
             if slot.material is not None:
                 slot.material = slot.material.copy()    # localize

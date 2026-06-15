@@ -29,8 +29,10 @@ bl_info = {
 }
 
 from . addon import operators, panels, properties, preferences, utility, keymap
+from . addon.utility import console
 
 def register():
+    console.disable_quick_edit()   # stop a console click from freezing bakes (Windows)
     operators.register()
     properties.register()
     preferences.register()
