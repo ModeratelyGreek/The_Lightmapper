@@ -2,7 +2,6 @@ import bpy, platform
 from os.path import basename, dirname
 from bpy.types import AddonPreferences
 from bpy.props import *
-from .. operators import installopencv
 from . import addon_preferences
 import importlib
 
@@ -28,22 +27,6 @@ class TLM_AddonPreferences(AddonPreferences):
         row.label(text="Simple: Only the basic setup for Blender/Eevee baking with non-experimental features.")
         row = box.row()
         row.label(text="Full set of options available.")
-        row = box.row()
-
-        row.label(text="OpenCV")
-
-        cv2 = importlib.util.find_spec("cv2")
-
-        if cv2 is not None:
-            row.label(text="OpenCV installed")
-        else:
-            if platform.system() == "Windows":
-                row.label(text="OpenCV not found - Install as administrator!", icon_value=2)
-            else:
-                row.label(text="OpenCV not found - Click to install!", icon_value=2)
-            row = box.row()
-            row.operator("tlm.install_opencv_lightmaps", icon="PREFERENCES")
-
         box = layout.box()
         row = box.row()
         row.label(text="Blender Xatlas")

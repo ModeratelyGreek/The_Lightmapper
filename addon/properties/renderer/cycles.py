@@ -10,16 +10,10 @@ class TLM_CyclesSceneProperties(bpy.types.PropertyGroup):
                 description="Select whether to use the CPU or the GPU for baking", 
                 default="CPU")
 
-    tlm_quality : EnumProperty(
-        items = [('0', 'Exterior Preview', 'Best for fast exterior previz'),
-                    ('1', 'Interior Preview', 'Best for fast interior previz with bounces'),
-                    ('2', 'Medium', 'Best for complicated interior preview and final for isometric environments'),
-                    ('3', 'High', 'Best used for final baking for 3rd person games'),
-                    ('4', 'Production', 'Best for first-person and Archviz'),
-                    ('5', 'Custom', 'Uses the cycles sample settings provided the user')],
-                name = "Quality", 
-                description="Select baking quality", 
-                default="0")
+    # NOTE: The old `tlm_quality` preset enum was removed. Baking now inherits
+    # the scene's Cycles *Render* settings (samples, bounces, clamping,
+    # caustics, light paths, adaptive sampling) so they can be tuned directly
+    # in Properties > Render. Only the device is set from `tlm_mode` above.
 
     targets = [('texture', 'Image texture', 'Build to image texture')]
     if (2, 92, 0) >= bpy.app.version:

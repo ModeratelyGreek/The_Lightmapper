@@ -114,44 +114,6 @@ class TLM_CleanLightmaps(bpy.types.Operator):
         for obj in bpy.context.scene.objects:
             if obj.type == 'MESH' and obj.name in bpy.context.view_layer.objects:
                 if obj.TLM_ObjectProperties.tlm_mesh_lightmap_use:
-                    if obj.TLM_ObjectProperties.tlm_postpack_object:
-
-                        atlas = obj.TLM_ObjectProperties.tlm_postatlas_pointer
-                        atlas_resize = False
-
-                        for atlasgroup in scene.TLM_PostAtlasList:
-                            if atlasgroup.name == atlas:
-                                atlas_resize = True
-
-                        if atlas_resize:
-
-                            bpy.ops.object.select_all(action='DESELECT')
-                            obj.select_set(True)
-                            bpy.context.view_layer.objects.active = obj
-
-                            uv_layers = obj.data.uv_layers
-
-                            if not obj.TLM_ObjectProperties.tlm_use_default_channel:
-                                uv_channel = obj.TLM_ObjectProperties.tlm_uv_channel
-                            else:
-                                uv_channel = "UVMap_Lightmap"
-                            
-                            for i in range(0, len(uv_layers)):
-                                if uv_layers[i].name == uv_channel:
-                                    uv_layers.active_index = i
-                                    break
-
-                            bpy.ops.object.mode_set(mode='EDIT')
-                            bpy.ops.mesh.select_all(action='SELECT')
-                            bpy.ops.uv.select_all(action='SELECT')
-                            bpy.ops.uv.pack_islands(rotate=False, margin=0.001)
-                            bpy.ops.uv.select_all(action='DESELECT')
-                            bpy.ops.mesh.select_all(action='DESELECT')
-                            bpy.ops.object.mode_set(mode='OBJECT')
-
-                            if bpy.context.scene.TLM_SceneProperties.tlm_verbose:
-                                print("Resized for obj: " + obj.name)
-
                     if "Lightmap" in obj:
                         del obj["Lightmap"]
 
@@ -215,6 +177,16 @@ class TLM_ExploreLightmaps(bpy.types.Operator):
 
         return {'FINISHED'}
 
+def _valid_for_lightmap(obj):
+    """An object is eligible for lightmapping only if it has geometry and at
+    least one material. Returns (ok, reason)."""
+    if len(obj.data.polygons) == 0:
+        return False, "no geometry"
+    if not any(slot.material for slot in obj.material_slots):
+        return False, "no material"
+    return True, ""
+
+
 class TLM_EnableSet(bpy.types.Operator):
     """Enable for set"""
     bl_idname = "tlm.enable_set"
@@ -228,13 +200,20 @@ class TLM_EnableSet(bpy.types.Operator):
 
         weightList = {} #ObjName : [Dimension,Weight]
         max = 0
+        skipped = []  #(name, reason) for objects not eligible for lightmapping
 
         if bpy.context.scene.TLM_SceneProperties.tlm_utility_set == "Scene":
             for obj in bpy.context.scene.objects:
                 if obj.type == "MESH":
 
+                    valid, reason = _valid_for_lightmap(obj)
+                    if not valid:
+                        obj.TLM_ObjectProperties.tlm_mesh_lightmap_use = False
+                        skipped.append((obj.name, reason))
+                        continue
+
                     print("Enabling for scene: " + obj.name)
-                    
+
                     bpy.context.view_layer.objects.active = obj
                     obj.select_set(True)
                     bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
@@ -243,12 +222,10 @@ class TLM_EnableSet(bpy.types.Operator):
                     
                     obj.TLM_ObjectProperties.tlm_mesh_lightmap_unwrap_mode = bpy.context.scene.TLM_SceneProperties.tlm_mesh_lightmap_unwrap_mode
                     obj.TLM_ObjectProperties.tlm_mesh_unwrap_margin = bpy.context.scene.TLM_SceneProperties.tlm_mesh_unwrap_margin
-                    obj.TLM_ObjectProperties.tlm_postpack_object = bpy.context.scene.TLM_SceneProperties.tlm_postpack_object
 
                     if obj.TLM_ObjectProperties.tlm_mesh_lightmap_unwrap_mode == "AtlasGroupA":
                         obj.TLM_ObjectProperties.tlm_atlas_pointer = bpy.context.scene.TLM_SceneProperties.tlm_atlas_pointer
 
-                    obj.TLM_ObjectProperties.tlm_postatlas_pointer = bpy.context.scene.TLM_SceneProperties.tlm_postatlas_pointer
                     
                     if bpy.context.scene.TLM_SceneProperties.tlm_resolution_weight == "Single":
                         obj.TLM_ObjectProperties.tlm_mesh_lightmap_resolution = scene.TLM_SceneProperties.tlm_mesh_lightmap_resolution
@@ -276,8 +253,14 @@ class TLM_EnableSet(bpy.types.Operator):
             for obj in bpy.context.selected_objects:
                 if obj.type == "MESH":
                     
+                    valid, reason = _valid_for_lightmap(obj)
+                    if not valid:
+                        obj.TLM_ObjectProperties.tlm_mesh_lightmap_use = False
+                        skipped.append((obj.name, reason))
+                        continue
+
                     print("Enabling for selection: " + obj.name)
-                    
+
                     bpy.context.view_layer.objects.active = obj
                     obj.select_set(True)
                     bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
@@ -286,12 +269,10 @@ class TLM_EnableSet(bpy.types.Operator):
                     
                     obj.TLM_ObjectProperties.tlm_mesh_lightmap_unwrap_mode = bpy.context.scene.TLM_SceneProperties.tlm_mesh_lightmap_unwrap_mode
                     obj.TLM_ObjectProperties.tlm_mesh_unwrap_margin = bpy.context.scene.TLM_SceneProperties.tlm_mesh_unwrap_margin
-                    obj.TLM_ObjectProperties.tlm_postpack_object = bpy.context.scene.TLM_SceneProperties.tlm_postpack_object
 
                     if obj.TLM_ObjectProperties.tlm_mesh_lightmap_unwrap_mode == "AtlasGroupA":
                         obj.TLM_ObjectProperties.tlm_atlas_pointer = bpy.context.scene.TLM_SceneProperties.tlm_atlas_pointer
 
-                    obj.TLM_ObjectProperties.tlm_postatlas_pointer = bpy.context.scene.TLM_SceneProperties.tlm_postatlas_pointer
                     
                     if bpy.context.scene.TLM_SceneProperties.tlm_resolution_weight == "Single":
                         obj.TLM_ObjectProperties.tlm_mesh_lightmap_resolution = scene.TLM_SceneProperties.tlm_mesh_lightmap_resolution
@@ -320,8 +301,14 @@ class TLM_EnableSet(bpy.types.Operator):
                 if obj.type == "MESH":
                     if obj.TLM_ObjectProperties.tlm_mesh_lightmap_use:
 
+                        valid, reason = _valid_for_lightmap(obj)
+                        if not valid:
+                            obj.TLM_ObjectProperties.tlm_mesh_lightmap_use = False
+                            skipped.append((obj.name, reason))
+                            continue
+
                         print("Enabling for designated: " + obj.name)
-                        
+
                         bpy.context.view_layer.objects.active = obj
                         obj.select_set(True)
                         bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
@@ -330,12 +317,10 @@ class TLM_EnableSet(bpy.types.Operator):
                         
                         obj.TLM_ObjectProperties.tlm_mesh_lightmap_unwrap_mode = bpy.context.scene.TLM_SceneProperties.tlm_mesh_lightmap_unwrap_mode
                         obj.TLM_ObjectProperties.tlm_mesh_unwrap_margin = bpy.context.scene.TLM_SceneProperties.tlm_mesh_unwrap_margin
-                        obj.TLM_ObjectProperties.tlm_postpack_object = bpy.context.scene.TLM_SceneProperties.tlm_postpack_object
 
                         if obj.TLM_ObjectProperties.tlm_mesh_lightmap_unwrap_mode == "AtlasGroupA":
                             obj.TLM_ObjectProperties.tlm_atlas_pointer = bpy.context.scene.TLM_SceneProperties.tlm_atlas_pointer
 
-                        obj.TLM_ObjectProperties.tlm_postatlas_pointer = bpy.context.scene.TLM_SceneProperties.tlm_postatlas_pointer
                         
                         if bpy.context.scene.TLM_SceneProperties.tlm_resolution_weight == "Single":
                             obj.TLM_ObjectProperties.tlm_mesh_lightmap_resolution = scene.TLM_SceneProperties.tlm_mesh_lightmap_resolution
@@ -400,7 +385,14 @@ class TLM_EnableSet(bpy.types.Operator):
                             print("Obj: " + obj.name)
                             print("")
                             obj.TLM_ObjectProperties.tlm_mesh_lightmap_resolution = str(a)
-        
+
+        if skipped:
+            preview = ", ".join("%s (%s)" % (n, r) for n, r in skipped[:8])
+            if len(skipped) > 8:
+                preview += ", ..."
+            self.report({'WARNING'}, "Skipped %d object(s) not eligible for lightmapping: %s" % (len(skipped), preview))
+            print("TLM Enable for set - skipped: " + preview)
+
         return{'FINISHED'}
 
 class TLM_DisableSelection(bpy.types.Operator):
@@ -542,22 +534,6 @@ class TLM_AtlasListNewItem(bpy.types.Operator):
 
         return{'FINISHED'}
 
-class TLM_PostAtlasListNewItem(bpy.types.Operator):
-    # Add a new item to the list
-    bl_idname = "tlm_postatlaslist.new_item"
-    bl_label = "Add a new item"
-    bl_description = "Create a new AtlasGroup"
-    bl_description = ""
-
-    def execute(self, context):
-        scene = context.scene
-        scene.TLM_PostAtlasList.add()
-        scene.TLM_PostAtlasListItem = len(scene.TLM_PostAtlasList) - 1
-
-        scene.TLM_PostAtlasList[len(scene.TLM_PostAtlasList) - 1].name = "AtlasGroup"
-
-        return{'FINISHED'}
-
 class TLM_AtlastListDeleteItem(bpy.types.Operator):
     # Delete the selected item from the list
     bl_idname = "tlm_atlaslist.delete_item"
@@ -590,38 +566,6 @@ class TLM_AtlastListDeleteItem(bpy.types.Operator):
         scene.TLM_AtlasListItem = index
         return{'FINISHED'}
 
-class TLM_PostAtlastListDeleteItem(bpy.types.Operator):
-    # Delete the selected item from the list
-    bl_idname = "tlm_postatlaslist.delete_item"
-    bl_label = "Deletes an item"
-    bl_description = "Delete an AtlasGroup"
-
-    @classmethod
-    def poll(self, context):
-        """ Enable if there's something in the list """
-        scene = context.scene
-        return len(scene.TLM_PostAtlasList) > 0
-
-    def execute(self, context):
-        scene = context.scene
-        list = scene.TLM_PostAtlasList
-        index = scene.TLM_PostAtlasListItem
-
-        for obj in bpy.context.scene.objects:
-
-            atlasName = scene.TLM_PostAtlasList[index].name
-
-            if obj.TLM_ObjectProperties.tlm_atlas_pointer == atlasName:
-                obj.TLM_ObjectProperties.tlm_mesh_lightmap_unwrap_mode = "SmartProject"
-
-        list.remove(index)
-
-        if index > 0:
-            index = index - 1
-
-        scene.TLM_PostAtlasListItem = index
-        return{'FINISHED'}
-
 class TLM_AtlasListMoveItem(bpy.types.Operator):
     # Move an item in the list
     bl_idname = "tlm_atlaslist.move_item"
@@ -652,48 +596,6 @@ class TLM_AtlasListMoveItem(bpy.types.Operator):
         scene = context.scene
         list = scene.TLM_AtlasList
         index = scene.TLM_AtlasListItem
-
-        if self.direction == 'DOWN':
-            neighbor = index + 1
-            self.move_index()
-
-        elif self.direction == 'UP':
-            neighbor = index - 1
-            self.move_index()
-        else:
-            return{'CANCELLED'}
-        return{'FINISHED'}
-
-class TLM_PostAtlasListMoveItem(bpy.types.Operator):
-    # Move an item in the list
-    bl_idname = "tlm_postatlaslist.move_item"
-    bl_label = "Move an item in the list"
-    bl_description = "Move an item in the list"
-    direction: bpy.props.EnumProperty(
-                items=(
-                    ('UP', 'Up', ""),
-                    ('DOWN', 'Down', ""),))
-
-    def move_index(self):
-        # Move index of an item render queue while clamping it
-        scene = context.scene
-        index = scene.TLM_PostAtlasListItem
-        list_length = len(scene.TLM_PostAtlasList) - 1
-        new_index = 0
-
-        if self.direction == 'UP':
-            new_index = index - 1
-        elif self.direction == 'DOWN':
-            new_index = index + 1
-
-        new_index = max(0, min(new_index, list_length))
-        scene.TLM_PostAtlasList.move(index, new_index)
-        scene.TLM_PostAtlasListItem = new_index
-
-    def execute(self, context):
-        scene = context.scene
-        list = scene.TLM_PostAtlasList
-        index = scene.TLM_PostAtlasListItem
 
         if self.direction == 'DOWN':
             neighbor = index + 1
@@ -1543,179 +1445,6 @@ class TLM_RemoveNormalNodes(bpy.types.Operator):
         
         return{'FINISHED'}
 
-class TLM_PostAtlasSpecialsMenu(bpy.types.Menu):
-    bl_label = "Lightmap"
-    bl_idname = "TLM_MT_PostAtlasListSpecials"
-
-    def draw(self, context):
-        layout = self.layout
-        layout.operator("tlm.add_collections_post")
-        layout.operator("tlm.add_selected_collections_post")
-
-class TLM_AddCollectionsPost(bpy.types.Operator): 
-    bl_idname = "tlm.add_collections_post"
-    bl_label = "Add collections"
-    bl_description = "Adds all collections to atlases"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    resolution : bpy.props.EnumProperty(
-            items = [('32', '32', 'TODO'),
-                    ('64', '64', 'TODO'),
-                    ('128', '128', 'TODO'),
-                    ('256', '256', 'TODO'),
-                    ('512', '512', 'TODO'),
-                    ('1024', '1024', 'TODO'),
-                    ('2048', '2048', 'TODO'),
-                    ('4096', '4096', 'TODO'),
-                    ('8192', '8192', 'TODO')],
-                    name = "Atlas Lightmap Resolution", 
-                    description="Atlas lightmap resolution",
-                    default='256')
-
-    unwrap_modes = [('Lightmap', 'Lightmap', 'Use Blender Lightmap Pack algorithm'),
-                 ('SmartProject', 'Smart Project', 'Use Blender Smart Project algorithm')]
-
-    if "blender_xatlas" in bpy.context.preferences.addons.keys():
-        unwrap_modes.append(('Xatlas', 'Xatlas', 'Use Xatlas addon packing algorithm'))
-
-    unwrap : bpy.props.EnumProperty(
-        items = unwrap_modes,
-                name = "Unwrap Mode", 
-                description="Atlas unwrapping method", 
-                default='SmartProject')
-
-    margin : bpy.props.FloatProperty(
-        name="Unwrap Margin", 
-        default=0.1, 
-        min=0.0, 
-        max=1.0, 
-        subtype='FACTOR')
-
-    @classmethod
-    def poll(cls, context):
-        return True
-
-    def execute(self, context):
-        
-        for collection in bpy.context.scene.collection.children:
-            
-            #Add a new atlas with collection name
-            #Traverse before adding
-            scene = bpy.context.scene
-            scene.TLM_PostAtlasList.add()
-            scene.TLM_PostAtlasListItem = len(scene.TLM_PostAtlasList) - 1
-
-            scene.TLM_PostAtlasList[len(scene.TLM_PostAtlasList) - 1].name = collection.name
-            scene.TLM_PostAtlasList[collection.name].tlm_atlas_lightmap_unwrap_mode = self.unwrap
-            scene.TLM_PostAtlasList[collection.name].tlm_atlas_lightmap_resolution = self.resolution
-            scene.TLM_PostAtlasList[collection.name].tlm_atlas_unwrap_margin = self.margin
-            
-            for obj in collection.objects:
-                if obj.type == "MESH":
-                    obj.TLM_ObjectProperties.tlm_mesh_lightmap_use = True
-                    obj.TLM_ObjectProperties.tlm_postpack_object = True
-                    obj.TLM_ObjectProperties.tlm_postatlas_pointer = collection.name
-
-        return{'FINISHED'}
-
-    def invoke(self, context, event):
-        return context.window_manager.invoke_props_dialog(self)
-
-    def draw(self, context):
-        row = self.layout
-        row.prop(self, "unwrap", text="Unwrap mode")
-        row.prop(self, "resolution", text="Resolution")
-        row.prop(self, "margin", text="Margin")
-
-class TLM_AddSelectedCollectionsPost(bpy.types.Operator): 
-    bl_idname = "tlm.add_selected_collections_post"
-    bl_label = "Add selected collections"
-    bl_description = "Add the collections of the selected objects"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    resolution : bpy.props.EnumProperty(
-            items = [('32', '32', 'TODO'),
-                    ('64', '64', 'TODO'),
-                    ('128', '128', 'TODO'),
-                    ('256', '256', 'TODO'),
-                    ('512', '512', 'TODO'),
-                    ('1024', '1024', 'TODO'),
-                    ('2048', '2048', 'TODO'),
-                    ('4096', '4096', 'TODO'),
-                    ('8192', '8192', 'TODO')],
-                    name = "Atlas Lightmap Resolution", 
-                    description="Atlas lightmap resolution",
-                    default='256')
-
-    unwrap_modes = [('Lightmap', 'Lightmap', 'Use Blender Lightmap Pack algorithm'),
-                 ('SmartProject', 'Smart Project', 'Use Blender Smart Project algorithm')]
-
-    if "blender_xatlas" in bpy.context.preferences.addons.keys():
-        unwrap_modes.append(('Xatlas', 'Xatlas', 'Use Xatlas addon packing algorithm'))
-
-    unwrap : bpy.props.EnumProperty(
-        items = unwrap_modes,
-                name = "Unwrap Mode", 
-                description="Atlas unwrapping method", 
-                default='SmartProject')
-
-    margin : bpy.props.FloatProperty(
-        name="Unwrap Margin", 
-        default=0.1, 
-        min=0.0, 
-        max=1.0, 
-        subtype='FACTOR')
-
-    @classmethod
-    def poll(cls, context):
-        return True
-
-    def execute(self, context):
-
-        collections = []
-
-        for obj in bpy.context.selected_objects:
-
-            obj_collection = obj.users_collection[0]
-
-            if obj_collection.name not in collections:
-
-                collections.append(obj_collection.name)
-
-        print("Collections:" + str(collections))
-        
-        for collection in bpy.context.scene.collection.children:
-
-            if collection.name in collections:
-                
-                #Add a new atlas with collection name
-                #Traverse before adding
-                scene = bpy.context.scene
-                scene.TLM_PostAtlasList.add()
-                scene.TLM_PostAtlasListItem = len(scene.TLM_PostAtlasList) - 1
-
-                scene.TLM_PostAtlasList[len(scene.TLM_PostAtlasList) - 1].name = collection.name
-                scene.TLM_PostAtlasList[collection.name].tlm_atlas_lightmap_unwrap_mode = self.unwrap
-                scene.TLM_PostAtlasList[collection.name].tlm_atlas_lightmap_resolution = self.resolution
-                scene.TLM_PostAtlasList[collection.name].tlm_atlas_unwrap_margin = self.margin
-                
-                for obj in collection.objects:
-                    if obj.type == "MESH":
-                        obj.TLM_ObjectProperties.tlm_mesh_lightmap_use = True
-                        obj.TLM_ObjectProperties.tlm_postpack_object = True
-                        obj.TLM_ObjectProperties.tlm_postatlas_pointer = collection.name
-
-        return{'FINISHED'}
-
-    def invoke(self, context, event):
-        return context.window_manager.invoke_props_dialog(self)
-
-    def draw(self, context):
-        row = self.layout
-        row.prop(self, "unwrap", text="Unwrap mode")
-        row.prop(self, "resolution", text="Resolution")
-        row.prop(self, "margin", text="Margin")
-
 class TLM_AtlasSpecialsMenu(bpy.types.Menu):
     bl_label = "Lightmap"
     bl_idname = "TLM_MT_AtlasListSpecials"
@@ -1742,10 +1471,6 @@ class TLM_DivideAtlasgroupsModal(bpy.types.Operator):
     
     def execute(self, context):
 
-        if bpy.context.scene.TLM_SceneProperties.tlm_atlas_mode == "Prepack":
-            print("Prepack!")
-        else:
-            print("Postpack!")
 
         print(bpy.context.scene.TLM_SceneProperties.tlm_atlasgroup_divisions)
         print(bpy.context.scene.TLM_SceneProperties.tlm_atlasgroup_division_unwrap_mode)

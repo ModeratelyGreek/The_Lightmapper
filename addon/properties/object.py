@@ -10,10 +10,6 @@ class TLM_ObjectProperties(bpy.types.PropertyGroup):
             description = "",
             default = "")
 
-    tlm_postatlas_pointer : StringProperty(
-            name = "Atlas Group",
-            description = "Atlas Lightmap Group",
-            default = "")
 
     tlm_uvchannel_pointer : StringProperty(
             name = "UV Channel",
@@ -54,10 +50,6 @@ class TLM_ObjectProperties(bpy.types.PropertyGroup):
                 ('AtlasGroupA', 'Atlas Group (Prepack)', 'Attaches the object to a prepack Atlas group. Will overwrite UV map on build.'),
                  ('Copy', 'Copy existing', 'Use the existing UV channel')]
 
-    tlm_postpack_object : BoolProperty( #CHECK INSTEAD OF ATLASGROUPB
-        name="Postpack object", 
-        description="Postpack object into an AtlasGroup", 
-        default=False)
 
     if "blender_xatlas" in addon_keys:
         unwrap_modes.append(('Xatlas', 'Xatlas', 'TODO'))

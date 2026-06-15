@@ -149,7 +149,7 @@ def bake(plus_pass=0):
                 #TODO! ATLASGROUP!
 
                 print("Saving textures - Stage 1")
-                if obj.TLM_ObjectProperties.tlm_mesh_lightmap_unwrap_mode == "AtlasGroupA" or obj.TLM_ObjectProperties.tlm_postpack_object:
+                if obj.TLM_ObjectProperties.tlm_mesh_lightmap_unwrap_mode == "AtlasGroupA":
                     print("Saving textures - Stage 1: Atlas Groups")
                     for image in bpy.data.images:
                         if image.name != "Render Result" or image.name != "Viewer Node":

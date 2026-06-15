@@ -833,58 +833,10 @@ def set_settings():
             scene.render.tile_x = 32
             scene.render.tile_y = 32
     
-    if engineProperties.tlm_quality == "0":
-        cycles.samples = 32
-        cycles.max_bounces = 1
-        cycles.diffuse_bounces = 1
-        cycles.glossy_bounces = 1
-        cycles.transparent_max_bounces = 1
-        cycles.transmission_bounces = 1
-        cycles.volume_bounces = 1
-        cycles.caustics_reflective = False
-        cycles.caustics_refractive = False
-    elif engineProperties.tlm_quality == "1":
-        cycles.samples = 64
-        cycles.max_bounces = 2
-        cycles.diffuse_bounces = 2
-        cycles.glossy_bounces = 2
-        cycles.transparent_max_bounces = 2
-        cycles.transmission_bounces = 2
-        cycles.volume_bounces = 2
-        cycles.caustics_reflective = False
-        cycles.caustics_refractive = False
-    elif engineProperties.tlm_quality == "2":
-        cycles.samples = 512
-        cycles.max_bounces = 2
-        cycles.diffuse_bounces = 2
-        cycles.glossy_bounces = 2
-        cycles.transparent_max_bounces = 2
-        cycles.transmission_bounces = 2
-        cycles.volume_bounces = 2
-        cycles.caustics_reflective = False
-        cycles.caustics_refractive = False
-    elif engineProperties.tlm_quality == "3":
-        cycles.samples = 1024
-        cycles.max_bounces = 256
-        cycles.diffuse_bounces = 256
-        cycles.glossy_bounces = 256
-        cycles.transparent_max_bounces = 256
-        cycles.transmission_bounces = 256
-        cycles.volume_bounces = 256
-        cycles.caustics_reflective = False
-        cycles.caustics_refractive = False
-    elif engineProperties.tlm_quality == "4":
-        cycles.samples = 2048
-        cycles.max_bounces = 512
-        cycles.diffuse_bounces = 512
-        cycles.glossy_bounces = 512
-        cycles.transparent_max_bounces = 512
-        cycles.transmission_bounces = 512
-        cycles.volume_bounces = 512
-        cycles.caustics_reflective = True
-        cycles.caustics_refractive = True
-    else: #Custom
-        pass
+    # Quality presets removed. Samples, bounces, clamping, caustics, light
+    # paths and adaptive sampling are now inherited from the scene's Cycles
+    # Render settings (tune them in Properties > Render). Only the device and
+    # its matching tile size are overridden, above.
 
 def store_existing(prev_container):
 

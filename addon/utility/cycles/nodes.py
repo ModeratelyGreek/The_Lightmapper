@@ -47,9 +47,6 @@ def apply_lightmaps():
                                     if obj.TLM_ObjectProperties.tlm_mesh_lightmap_unwrap_mode == "AtlasGroupA":
                                         print("Atlas object image")
                                         image_name = obj.TLM_ObjectProperties.tlm_atlas_pointer + postfix + extension #TODO FIX EXTENSION
-                                    elif obj.TLM_ObjectProperties.tlm_postpack_object:
-                                        print("Atlas object image (postpack)")
-                                        image_name = obj.TLM_ObjectProperties.tlm_postatlas_pointer + postfix + extension #TODO FIX EXTENSION
                                     else:
                                         print("Baked object image")
                                         image_name = obj.name + postfix + extension #TODO FIX EXTENSION

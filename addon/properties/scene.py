@@ -21,10 +21,6 @@ class TLM_SceneProperties(bpy.types.PropertyGroup):
             description = "Atlas Lightmap Group",
             default = "")
 
-    tlm_postatlas_pointer : StringProperty(
-            name = "Atlas Group",
-            description = "Atlas Lightmap Group",
-            default = "")
 
     tlm_lightmap_engine : EnumProperty(
         items = engines,
@@ -137,11 +133,11 @@ class TLM_SceneProperties(bpy.types.PropertyGroup):
         default=False)
 
     tlm_denoise_engine : EnumProperty(
-        items = [('Integrated', 'Integrated', 'Use the Blender native denoiser (Compositor; Slow)'),
-                ('OIDN', 'Intel Denoiser', 'Use Intel denoiser (CPU powered)'),
-                ('Optix', 'Optix Denoiser', 'Use Nvidia Optix denoiser (GPU powered)')],
-                name = "Denoiser", 
-                description="Select which denoising engine to use.", 
+        items = [('Integrated', 'Integrated', "Use Blender's built-in denoiser (OpenImageDenoise, via the Compositor). No setup or external files required - recommended"),
+                ('OIDN', 'Intel (external)', 'Advanced: call a standalone Intel Open Image Denoise binary. Requires downloading OIDN and setting its path below'),
+                ('Optix', 'Optix (external)', 'Advanced: call a standalone NVIDIA OptiX denoiser binary. Requires the OptiX SDK Denoiser.exe and setting its path below')],
+                name = "Denoiser",
+                description="Select which denoising engine to use.",
                 default='Integrated')
 
     #FILTERING SETTINGS GROUP
@@ -333,10 +329,6 @@ class TLM_SceneProperties(bpy.types.PropertyGroup):
                 description="TODO", 
                 default='SmartProject')
 
-    tlm_postpack_object : BoolProperty( #CHECK INSTEAD OF ATLASGROUPB
-        name="Postpack object", 
-        description="Postpack object into an AtlasGroup", 
-        default=False)
 
     tlm_mesh_unwrap_margin : FloatProperty(
         name="Unwrap Margin", 
@@ -349,13 +341,6 @@ class TLM_SceneProperties(bpy.types.PropertyGroup):
         name="Don't apply materials", 
         description="Headless; Do not apply baked materials on finish.", 
         default=False)
-
-    tlm_atlas_mode : EnumProperty(
-        items = [('Prepack', 'Pre-packing', 'Todo.'),
-                 ('Postpack', 'Post-packing', 'Todo.')],
-                name = "Atlas mode", 
-                description="TODO", 
-                default='Prepack')
 
     tlm_alert_sound : EnumProperty(
         items = [('dash', 'Dash', 'Dash alert'),
@@ -470,9 +455,20 @@ class TLM_SceneProperties(bpy.types.PropertyGroup):
         default=False)
     
     tlm_gltf_iterate_all : BoolProperty(
-        name="Apply to all materials", 
-        description="Applies the GLTF node setup to all materials in the scene.", 
+        name="Apply to all materials",
+        description="Applies the GLTF node setup to all materials in the scene.",
         default=False)
+
+    tlm_export_glb_path : StringProperty(
+        name="Export GLB",
+        description="Output path for the exported .glb. The HDR lightmap sidecars and manifest are written next to it.",
+        default="//Export/world.glb",
+        subtype="FILE_PATH")
+
+    tlm_export_embed_occlusion : BoolProperty(
+        name="Embed lightmap as occlusion",
+        description="Wire the baked lightmap into the glTF occlusion slot. This guarantees the lightmap UV is exported (as the second texcoord) and gives an LDR baseline (three.js aoMap). The HDR sidecar is always written for the float lightMap.",
+        default=True)
 
     tlm_environment_probe_resolution : EnumProperty(
         items = [('32', '32', 'TODO'),
