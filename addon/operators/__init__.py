@@ -16,6 +16,7 @@ classes = [
     tlm.TLM_AtlasListMoveItem,
     tlm.TLM_AtlasAssignSelected,
     tlm.TLM_AtlasSelectObjects,
+    tlm.TLM_AtlasSelectNonAtlased,
     tlm.TLM_AtlasRefreshStats,
     tlm.TLM_StartServer,
     tlm.TLM_BuildEnvironmentProbes,

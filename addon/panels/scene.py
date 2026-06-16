@@ -543,13 +543,7 @@ class TLM_PT_Utility(bpy.types.Panel):
             row.prop(sceneProperties, "tlm_gltf_iterate_all")
 
             row = layout.row()
-            row.label(text="Nondestructive GLB export")
-            row = layout.row()
-            row.prop(sceneProperties, "tlm_export_glb_path")
-            row = layout.row()
-            row.prop(sceneProperties, "tlm_export_embed_occlusion")
-            row = layout.row()
-            row.operator("tlm.export_glb", icon="EXPORT")
+            row.label(text="GLB export moved to the viewport sidebar (N) ▸ GLTF Export", icon="INFO")
 
 class TLM_PT_Selection(bpy.types.Panel):
     bl_label = "Selection"
@@ -636,14 +630,28 @@ class TLM_PT_Additional(bpy.types.Panel):
         row.operator("tlm.atlas_select_objects", icon='RESTRICT_SELECT_OFF')
         row.operator("tlm.atlas_refresh_stats", icon='FILE_REFRESH', text="")
 
+        row = layout.row(align=True)
+        row.operator("tlm.atlas_select_non_atlased", icon='STICKY_UVS_DISABLE')
+
         if atlasListItem >= 0 and len(atlasList) > 0:
             item = atlasList[atlasListItem]
+            layout.prop(item, "tlm_atlas_lighting_mode")
             layout.prop(item, "tlm_atlas_lightmap_unwrap_mode")
             layout.prop(item, "tlm_atlas_lightmap_resolution")
             layout.prop(item, "tlm_atlas_unwrap_margin")
             layout.prop(item, "tlm_atlas_repack")
             if item.tlm_atlas_repack:
-                layout.prop(item, "tlm_atlas_pack_margin")
+                layout.prop(item, "tlm_atlas_pack_margin_auto")
+                if item.tlm_atlas_pack_margin_auto:
+                    d = scene.TLM_EngineProperties.tlm_dilation_margin
+                    res = int(item.tlm_atlas_lightmap_resolution)
+                    m = min(float(d) / res, 0.2) if res else 0.0
+                    row = layout.row()
+                    row.enabled = False
+                    row.label(text="Pack margin %.5f  (→ %dpx gap = 2 × %dpx dilation)"
+                              % (m, round(2 * m * res), d))
+                else:
+                    layout.prop(item, "tlm_atlas_pack_margin")
                 layout.prop(item, "tlm_atlas_pack_shape")
 
             area = item.tlm_atlas_total_area

@@ -48,12 +48,44 @@ def _log(msg):
     print("[TLM Export] " + msg, flush=True)
 
 
+def _prune_unexported(temp, vl):
+    """Strip from the temp scene everything that shouldn't ship, for ANY object
+    type (mesh / empty / light / curve / ...), so it never reaches the GLB:
+
+      * objects in a view-layer-excluded collection (the unchecked box in the
+        outliner) -- these are in ``scene.objects`` but not ``view_layer.objects``;
+      * objects disabled for render (the object's camera icon, ``hide_render``);
+      * objects in a collection disabled for render (collection ``hide_render``).
+
+    Runs before targets are gathered, so a render-disabled mesh isn't even baked.
+    Safe to remove outright: temp is a FULL_COPY, so these are throwaway dupes.
+    Returns the removed objects (for logging)."""
+    vl_objs = set(vl.objects)
+    to_remove = []
+    for obj in list(temp.objects):
+        drop = obj not in vl_objs or obj.hide_render
+        if not drop:
+            for coll in obj.users_collection:
+                if coll.hide_render:
+                    drop = True
+                    break
+        if drop:
+            to_remove.append(obj)
+    for obj in to_remove:
+        try:
+            bpy.data.objects.remove(obj, do_unlink=True)
+        except Exception as e:
+            _log("could not prune '%s': %s" % (obj.name, e))
+    return to_remove
+
+
 # --------------------------------------------------------------------------- #
 # Entry point
 # --------------------------------------------------------------------------- #
 
 def export_glb(operator, context):
-    console.disable_quick_edit()   # ensure a console click can't freeze the long bake
+    console.ensure_console_visible()   # pop the System Console so the long bake is visible
+    console.disable_quick_edit()       # ...and a stray click in it can't freeze the bake
     scene0 = context.scene
     eng = scene0.TLM_EngineProperties
     sp = scene0.TLM_SceneProperties
@@ -62,12 +94,23 @@ def export_glb(operator, context):
         operator.report({'ERROR'}, "Save the .blend before exporting.")
         return {'CANCELLED'}
 
+    # The scene default is the manifest's top-level mode; individual atlas
+    # groups may override it (effective_lighting_mode). Validate every mode that
+    # will actually be baked -- the self-contained export path only supports
+    # single-pass modes, whether they come from the scene or an atlas.
     lighting_mode = eng.tlm_lighting_mode
-    if lighting_mode not in SINGLE_PASS:
+    used_modes = {
+        lightmap.effective_lighting_mode(scene0, o)
+        for o in scene0.objects
+        if o.type == 'MESH' and o.TLM_ObjectProperties.tlm_mesh_lightmap_use
+    }
+    bad = sorted(used_modes - SINGLE_PASS)
+    if bad:
         operator.report(
             {'ERROR'},
             "Export supports single-pass lighting modes (Combined / Indirect / "
-            "AO / Complete). '%s' is multi-pass." % lighting_mode)
+            "AO / Complete). In use but multi-pass: %s. Fix the scene Lighting "
+            "Mode or the offending atlas group(s)." % ", ".join(bad))
         return {'CANCELLED'}
 
     glb_path = bpy.path.abspath(sp.tlm_export_glb_path)
@@ -99,6 +142,11 @@ def export_glb(operator, context):
     # depends on the ambient context at all.
     try:
         with bpy.context.temp_override(scene=temp, view_layer=vl):
+            pruned = _prune_unexported(temp, vl)
+            if pruned:
+                _log("Excluded %d non-rendered / unchecked-collection object(s) from export"
+                     % len(pruned))
+
             targets = [o for o in vl.objects
                        if o.type == 'MESH'
                        and o.TLM_ObjectProperties.tlm_mesh_lightmap_use]
@@ -268,7 +316,20 @@ def _setup_targets(temp, targets, savedir, vl):
         else:
             plain.append(o)
 
-    _log("%d atlas group(s), %d per-object target(s)" % (len(atlas_groups), len(plain)))
+    # Resolve atlas groups up front; demote any whose atlas definition is missing
+    # to per-object baking *before* the plain loop runs, so those objects still
+    # get a lightmap entry (otherwise _finalize KeyErrors on them at the end).
+    valid_atlas = {}     # atlas_name -> (agroup, members)
+    for atlas_name, members in atlas_groups.items():
+        agroup = temp.TLM_AtlasList.get(atlas_name)
+        if agroup is None:
+            _log("atlas '%s' not in atlas list - baking %d member(s) per-object"
+                 % (atlas_name, len(members)))
+            plain.extend(members)
+        else:
+            valid_atlas[atlas_name] = (agroup, members)
+
+    _log("%d atlas group(s), %d per-object target(s)" % (len(valid_atlas), len(plain)))
 
     # --- plain (per-object) -------------------------------------------------
     for o in plain:
@@ -283,13 +344,7 @@ def _setup_targets(temp, targets, savedir, vl):
         lm_for_obj[o.name] = (ident, bake_base, False)
 
     # --- shared pre-pack atlas groups --------------------------------------
-    for atlas_name, members in atlas_groups.items():
-        agroup = temp.TLM_AtlasList.get(atlas_name)
-        if agroup is None:
-            # Misconfigured pointer: fall back to per-object so we never crash.
-            for o in members:
-                plain.append(o)
-            continue
+    for atlas_name, (agroup, members) in valid_atlas.items():
         res = _res(int(agroup.tlm_atlas_lightmap_resolution), res_scale, ss)
         bake_base = atlas_name + "_baked"
         img = _new_float_image(bake_base, res, savedir)
@@ -364,11 +419,28 @@ def _unwrap_atlas(members, agroup, vl):
     # shared atlas uses as much space as possible (Smart Project's own packing
     # leaves a lot of empty room).
     if getattr(agroup, "tlm_atlas_repack", True):
-        _average_and_pack(agroup.tlm_atlas_pack_margin,
+        _average_and_pack(_pack_margin_for(agroup, bpy.context.scene),
                           getattr(agroup, "tlm_atlas_pack_shape", "AABB"))
 
     bpy.ops.mesh.select_all(action='DESELECT')
     bpy.ops.object.mode_set(mode='OBJECT')
+
+
+def _pack_margin_for(agroup, scene):
+    """UV-space pack margin for an atlas. When auto, derive it from the bake
+    dilation: each baked island bleeds D px outward, so two neighbours need >= 2D
+    px between them or their dilations overlap (light bleed). With pack
+    margin_method='FRACTION' the margin is a per-island BORDER, so the gap between
+    two islands is 2*margin (measured) -> setting margin = D/R gives a gap of
+    2D px exactly. Clamped so an extreme dilation / tiny atlas can't ask for a
+    nonsensical margin. Falls back to the manual value when auto is off."""
+    if not getattr(agroup, "tlm_atlas_pack_margin_auto", True):
+        return agroup.tlm_atlas_pack_margin
+    res = int(agroup.tlm_atlas_lightmap_resolution)
+    if not res:
+        return agroup.tlm_atlas_pack_margin
+    d = scene.TLM_EngineProperties.tlm_dilation_margin
+    return min(float(d) / res, 0.2)
 
 
 def _average_and_pack(margin, shape):
@@ -383,10 +455,19 @@ def _average_and_pack(margin, shape):
 
     t0 = time()
     _log("  packing islands (shape=%s, margin=%.4f)..." % (shape, margin))
-    try:
-        bpy.ops.uv.pack_islands(rotate=True, margin=margin, shape_method=shape)
-    except TypeError:
-        bpy.ops.uv.pack_islands(rotate=True, margin=margin)
+    # margin_method='FRACTION' makes `margin` a literal fraction of the unit
+    # square (the inter-island gap), so the auto margin (2*dilation/res) maps to
+    # an exact pixel gap; the default 'SCALED' would rescale it by island size.
+    # Degrade gracefully across Blender versions that lack either kwarg.
+    for kwargs in (dict(rotate=True, margin=margin, margin_method='FRACTION', shape_method=shape),
+                   dict(rotate=True, margin=margin, margin_method='FRACTION'),
+                   dict(rotate=True, margin=margin, shape_method=shape),
+                   dict(rotate=True, margin=margin)):
+        try:
+            bpy.ops.uv.pack_islands(**kwargs)
+            break
+        except TypeError:
+            continue
     _log("  pack done in %.1fs" % (time() - t0))
 
 
@@ -450,16 +531,34 @@ def _denoise_lightmaps(temp, lm_for_obj, savedir):
     except AttributeError:
         pass
 
-    temp.use_nodes = True
-    tree = temp.node_tree
-    for n in list(tree.nodes):
-        tree.nodes.remove(n)
+    # Compositor node tree. Blender 4.x embeds it as scene.node_tree (via
+    # use_nodes); Blender 5.x moved it to a shared CompositorNodeTree datablock
+    # at scene.compositing_node_group, dropped scene.node_tree AND the Composite
+    # output node (output is now the node group's output). Getting this wrong is
+    # exactly why denoise silently no-op'd on 5.x: the old code hit
+    # AttributeError on scene.node_tree and the caller swallowed it.
+    owned_ng = None
+    if hasattr(temp, "compositing_node_group"):          # Blender 5.x
+        tree = bpy.data.node_groups.new("TLM_Denoise_Comp", 'CompositorNodeTree')
+        temp.compositing_node_group = tree
+        owned_ng = tree
+    else:                                                # Blender 4.x
+        temp.use_nodes = True
+        tree = temp.node_tree
+        for n in list(tree.nodes):
+            tree.nodes.remove(n)
+
     img_node = tree.nodes.new('CompositorNodeImage')
     dn_node = tree.nodes.new('CompositorNodeDenoise')
-    out_node = tree.nodes.new('CompositorNodeComposite')
-    if hasattr(dn_node, "use_hdr"):
+    if hasattr(dn_node, "use_hdr"):              # 4.x had this toggle; 5.x dropped it
         dn_node.use_hdr = True
     tree.links.new(img_node.outputs[0], dn_node.inputs[0])
+
+    if owned_ng is not None:                     # 5.x: feed the node group's output
+        tree.interface.new_socket(name="Image", in_out='OUTPUT', socket_type='NodeSocketColor')
+        out_node = tree.nodes.new('NodeGroupOutput')
+    else:                                        # 4.x: classic Composite output
+        out_node = tree.nodes.new('CompositorNodeComposite')
     tree.links.new(dn_node.outputs[0], out_node.inputs[0])
 
     rs = temp.render
@@ -472,21 +571,32 @@ def _denoise_lightmaps(temp, lm_for_obj, savedir):
         temp.view_settings.view_transform = 'Standard'
 
     done = 0
-    for base in bases:
-        src = os.path.join(savedir, base + ".hdr")
-        if not os.path.isfile(src):
-            _log("  denoise: missing %s" % src)
-            continue
-        img = bpy.data.images.load(src, check_existing=False)
-        img_node.image = img
-        rs.resolution_x, rs.resolution_y = img.size[0], img.size[1]
-        rs.resolution_percentage = 100
-        dst = os.path.join(savedir, base + "_dn.hdr")
-        rs.filepath = dst
-        bpy.ops.render.render(write_still=True)
-        bpy.data.images.remove(img)
-        os.replace(dst, src)                     # denoised data flows into the EXR sidecar
-        done += 1
+    try:
+        for base in bases:
+            src = os.path.join(savedir, base + ".hdr")
+            if not os.path.isfile(src):
+                _log("  denoise: missing %s" % src)
+                continue
+            img = bpy.data.images.load(src, check_existing=False)
+            img_node.image = img
+            rs.resolution_x, rs.resolution_y = img.size[0], img.size[1]
+            rs.resolution_percentage = 100
+            dst = os.path.join(savedir, base + "_dn.hdr")
+            rs.filepath = dst
+            bpy.ops.render.render(write_still=True)
+            bpy.data.images.remove(img)
+            if os.path.isfile(dst):
+                os.replace(dst, src)             # denoised data flows into the EXR sidecar
+                done += 1
+            else:
+                _log("  denoise: no output written for %s" % base)
+    finally:
+        if owned_ng is not None:                 # don't leak the throwaway node group
+            try:
+                temp.compositing_node_group = None
+                bpy.data.node_groups.remove(owned_ng)
+            except Exception:
+                pass
     return done
 
 
@@ -505,7 +615,11 @@ def _finalize(temp, targets, lm_for_obj, savedir, out_dir, group):
     converted = {}     # bake_base -> sidecar filename (dedupes atlas members)
 
     for o in targets:
-        ident, bake_base, is_atlas = lm_for_obj[o.name]
+        entry = lm_for_obj.get(o.name)
+        if entry is None:
+            print("[TLM Export] WARNING: no lightmap baked for '%s' - omitting from manifest" % o.name)
+            continue
+        ident, bake_base, is_atlas = entry
         if bake_base not in converted:
             src = os.path.join(savedir, bake_base + ".hdr")
             sidecar = ident + "_lightmap.exr"
@@ -515,11 +629,25 @@ def _finalize(temp, targets, lm_for_obj, savedir, out_dir, group):
         if group is not None:
             _wire_occlusion(o, group)
 
-        o["tlm_lightmap_id"] = ident       # travels to GLB node.extras
+        # Both travel to the GLB node.extras (export_extras=True). The UV index
+        # MUST be per-object: atlas members can have different numbers of UV
+        # layers, so the lightmap UV lands at a different TEXCOORD per object
+        # (e.g. a rock with no original UV -> TEXCOORD_0, one with an original
+        # UV -> TEXCOORD_1). The manifest is keyed by atlas ident (shared), so
+        # it CANNOT carry a per-object uv -- read tlm_lightmap_uv off the node.
+        uv = _lm_uv_index(o)
+        o["tlm_lightmap_id"] = ident
+        o["tlm_lightmap_uv"] = uv
         manifest[ident] = {
             "file": converted[bake_base],
-            "uv": _lm_uv_index(o),
+            # NOTE: per-atlas fallback only (last member wins). The authoritative
+            # per-object value is node.extras.tlm_lightmap_uv -- prefer it.
+            "uv": uv,
             "atlas": is_atlas,
+            # Per-lightmap mode so the runtime knows how to apply it: lighting-
+            # only modes (combined/indirect/ao) multiply against base color;
+            # 'complete' is the full baked-down look, applied unlit.
+            "lighting_mode": lightmap.effective_lighting_mode(temp, o),
         }
     return manifest
 

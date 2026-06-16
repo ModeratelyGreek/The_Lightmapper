@@ -1,6 +1,8 @@
 import sys
 import ctypes
 
+import bpy
+
 
 def disable_quick_edit():
     """Disable the Windows console 'QuickEdit Mode' (and Insert Mode).
@@ -39,5 +41,36 @@ def disable_quick_edit():
         # ENABLE_EXTENDED_FLAGS must be set for the QuickEdit/Insert bits to take effect.
         new_mode = (mode.value & ~ENABLE_QUICK_EDIT_MODE & ~ENABLE_INSERT_MODE) | ENABLE_EXTENDED_FLAGS
         k32.SetConsoleMode(handle, new_mode)
+    except Exception:
+        pass
+
+
+def ensure_console_visible():
+    """Open Blender's System Console if it's currently hidden, so long blocking
+    operations (bake/export) are actually visible.
+
+    wm.console_toggle() is a *toggle*, so we first check the real window state
+    via the Win32 console HWND and only toggle when it's hidden -- that way we
+    never accidentally close a console you already have open (or an external
+    terminal Blender was launched from). No-op off Windows / when no console.
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        k32 = ctypes.windll.kernel32
+        u32 = ctypes.windll.user32
+        k32.GetConsoleWindow.restype = ctypes.c_void_p
+        u32.IsWindowVisible.argtypes = [ctypes.c_void_p]
+        u32.IsWindowVisible.restype = ctypes.c_int
+
+        hwnd = k32.GetConsoleWindow()
+        if not hwnd or u32.IsWindowVisible(hwnd):
+            return  # no console attached, or it's already visible
+    except Exception:
+        return
+
+    try:
+        if hasattr(bpy.ops.wm, "console_toggle"):
+            bpy.ops.wm.console_toggle()
     except Exception:
         pass

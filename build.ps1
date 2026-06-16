@@ -49,9 +49,14 @@ if ($Install) {
     if (-not (Test-Path $Blender)) { throw "Blender not found at $Blender" }
     $expr = @"
 import bpy
+# Never persist this --factory-startup session's prefs: saving them (explicitly
+# or via auto-save on exit) would overwrite the real userpref.blend with FACTORY
+# defaults, resetting GPU/OptiX, theme, etc. addon_install still updates the real
+# scripts/addons dir (so the addon updates), and the enabled state is preserved
+# from the user's existing userpref.blend, which we leave untouched.
+bpy.context.preferences.use_preferences_save = False
 bpy.ops.preferences.addon_install(overwrite=True, filepath=r'$zip')
 bpy.ops.preferences.addon_enable(module='thelightmapper')
-bpy.ops.wm.save_userpref()
 print('TLM_ADDON_REGISTER_OK')
 "@
     & $Blender --background --factory-startup --python-expr $expr
@@ -59,7 +64,7 @@ print('TLM_ADDON_REGISTER_OK')
 
 if ($Test) {
     if (-not (Test-Path $Blender)) { throw "Blender not found at $Blender" }
-    foreach ($t in @("tests\smoketest.py", "tests\smoketest_atlas.py", "tests\smoketest_enableset.py")) {
+    foreach ($t in @("tests\smoketest.py", "tests\smoketest_atlas.py", "tests\smoketest_enableset.py", "tests\smoketest_denoise.py")) {
         Write-Host "=== $t ==="
         & $Blender --background --python (Join-Path $root $t) 2>&1 |
             Select-String -Pattern "OK:|FAIL:|manifest:|SMOKETEST_RESULT"

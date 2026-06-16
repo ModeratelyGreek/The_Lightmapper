@@ -22,6 +22,16 @@ class TLM_AtlasListItem(bpy.types.PropertyGroup):
         description="Cached world-space surface area (m²) of all objects assigned to this atlas. Use 'Refresh stats' to recompute",
         default=0.0)
 
+    tlm_atlas_lighting_mode : EnumProperty(
+        items = [('scene', 'Scene Default', 'Use the scene-wide Lighting Mode for this atlas'),
+                 ('combined', 'Combined', 'Direct + indirect diffuse lighting only (no albedo); multiply against base color at runtime'),
+                 ('indirect', 'Indirect', 'Indirect diffuse lighting only'),
+                 ('ao', 'AO', 'Ambient occlusion only'),
+                 ('complete', 'Complete', 'Full surface appearance baked down (albedo, mix shaders, procedurals, emission); use as an unlit texture at runtime')],
+                name = "Lighting Mode",
+                description="Per-atlas bake lighting mode. Overrides the scene Lighting Mode for objects in this atlas. Use 'Complete' to bake down complex/procedural materials to their final look",
+                default='scene')
+
     tlm_atlas_unwrap_margin : FloatProperty(
         name="Unwrap Margin", 
         default=0.1, 
@@ -50,6 +60,11 @@ class TLM_AtlasListItem(bpy.types.PropertyGroup):
     tlm_atlas_repack : BoolProperty(
         name="Average + pack islands",
         description="After unwrapping, equalize island scale (uniform texel density) and tightly pack the atlas to use as much space as possible.",
+        default=True)
+
+    tlm_atlas_pack_margin_auto : BoolProperty(
+        name="Auto pack margin",
+        description="Derive the pack margin from the bake Dilation Margin and this atlas's resolution (dilation / resolution; the pack margin is a per-island border, so this leaves a 2 x dilation pixel gap between islands) so their baked dilation can never bleed together. Turn off to set the margin manually.",
         default=True)
 
     tlm_atlas_pack_margin : FloatProperty(

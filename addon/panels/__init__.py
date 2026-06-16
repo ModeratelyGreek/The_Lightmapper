@@ -1,6 +1,6 @@
 import bpy, os
 from bpy.utils import register_class, unregister_class
-from . import scene, object, light, world, image
+from . import scene, object, light, world, image, gltf_export
 
 classes = [
     scene.TLM_PT_Panel,
@@ -16,7 +16,8 @@ classes = [
     object.TLM_PT_MaterialMenu,
     light.TLM_PT_LightMenu,
     world.TLM_PT_WorldMenu,
-    image.TLM_PT_Imagetools
+    image.TLM_PT_Imagetools,
+    gltf_export.TLM_PT_GLTFExport
 ]
 
 def register():

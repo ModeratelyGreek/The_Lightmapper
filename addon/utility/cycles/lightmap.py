@@ -2,6 +2,24 @@ import bpy, os, datetime
 from .. import build
 from time import time, sleep
 
+def effective_lighting_mode(scene, obj):
+    """Resolve the lighting mode that should actually be baked for ``obj``.
+
+    An atlas group's own Lighting Mode overrides the scene-wide mode for every
+    object assigned to it; objects that aren't in a (valid) atlas, or atlases
+    left on 'Scene Default', fall back to scene.TLM_EngineProperties. Because
+    every member of an atlas resolves to the same mode, a shared atlas image is
+    always baked with one consistent pass type."""
+    default = scene.TLM_EngineProperties.tlm_lighting_mode
+    op = obj.TLM_ObjectProperties
+    if op.tlm_mesh_lightmap_unwrap_mode == "AtlasGroupA":
+        atlas = scene.TLM_AtlasList.get(op.tlm_atlas_pointer)
+        if atlas is not None:
+            mode = getattr(atlas, "tlm_atlas_lighting_mode", "scene")
+            if mode and mode != "scene":
+                return mode
+    return default
+
 def bake(plus_pass=0):
 
     if bpy.context.scene.TLM_SceneProperties.tlm_verbose:
@@ -113,37 +131,46 @@ def bake(plus_pass=0):
                 if scene.TLM_EngineProperties.tlm_target == "vertex":
                     scene.render.bake.target = "VERTEX_COLORS"
 
-                if scene.TLM_EngineProperties.tlm_lighting_mode == "combined" or scene.TLM_EngineProperties.tlm_lighting_mode == "combinedneutral":
+                # Per-object effective mode: an atlas group's Lighting Mode
+                # overrides the scene default for its members (see
+                # effective_lighting_mode). Resolved fresh per object so a
+                # 'Complete' rock atlas and a 'Combined' wall atlas can coexist
+                # in one bake.
+                mode = effective_lighting_mode(scene, obj)
+                margin = scene.TLM_EngineProperties.tlm_dilation_margin
+
+                if mode == "combined" or mode == "combinedneutral":
                     print("Baking combined: Direct + Indirect")
-                    bpy.ops.object.bake(type="DIFFUSE", pass_filter={"DIRECT","INDIRECT"}, margin=scene.TLM_EngineProperties.tlm_dilation_margin, use_clear=False)
-                elif scene.TLM_EngineProperties.tlm_lighting_mode == "indirect":
+                    bpy.ops.object.bake(type="DIFFUSE", pass_filter={"DIRECT","INDIRECT"}, margin=margin, use_clear=False)
+                elif mode == "indirect":
                     print("Baking combined: Indirect")
-                    bpy.ops.object.bake(type="DIFFUSE", pass_filter={"INDIRECT"}, margin=scene.TLM_EngineProperties.tlm_dilation_margin, use_clear=False)
-                elif scene.TLM_EngineProperties.tlm_lighting_mode == "ao":
+                    bpy.ops.object.bake(type="DIFFUSE", pass_filter={"INDIRECT"}, margin=margin, use_clear=False)
+                elif mode == "ao":
                     print("Baking combined: AO")
-                    bpy.ops.object.bake(type="AO", margin=scene.TLM_EngineProperties.tlm_dilation_margin, use_clear=False)
-                elif scene.TLM_EngineProperties.tlm_lighting_mode == "combinedao":
+                    bpy.ops.object.bake(type="AO", margin=margin, use_clear=False)
+                elif mode == "combinedao":
 
                     if bpy.app.driver_namespace["tlm_plus_mode"] == 1:
-                        bpy.ops.object.bake(type="DIFFUSE", pass_filter={"DIRECT","INDIRECT"}, margin=scene.TLM_EngineProperties.tlm_dilation_margin, use_clear=False)
+                        bpy.ops.object.bake(type="DIFFUSE", pass_filter={"DIRECT","INDIRECT"}, margin=margin, use_clear=False)
                     elif bpy.app.driver_namespace["tlm_plus_mode"] == 2:
-                        bpy.ops.object.bake(type="AO", margin=scene.TLM_EngineProperties.tlm_dilation_margin, use_clear=False)
+                        bpy.ops.object.bake(type="AO", margin=margin, use_clear=False)
 
-                elif scene.TLM_EngineProperties.tlm_lighting_mode == "indirectao":
+                elif mode == "indirectao":
 
                     print("IndirAO")
-                    
+
                     if bpy.app.driver_namespace["tlm_plus_mode"] == 1:
                         print("IndirAO: 1")
-                        bpy.ops.object.bake(type="DIFFUSE", pass_filter={"INDIRECT"}, margin=scene.TLM_EngineProperties.tlm_dilation_margin, use_clear=False)
+                        bpy.ops.object.bake(type="DIFFUSE", pass_filter={"INDIRECT"}, margin=margin, use_clear=False)
                     elif bpy.app.driver_namespace["tlm_plus_mode"] == 2:
                         print("IndirAO: 2")
-                        bpy.ops.object.bake(type="AO", margin=scene.TLM_EngineProperties.tlm_dilation_margin, use_clear=False)
-                
-                elif scene.TLM_EngineProperties.tlm_lighting_mode == "complete":
-                    bpy.ops.object.bake(type="COMBINED", margin=scene.TLM_EngineProperties.tlm_dilation_margin, use_clear=False)
+                        bpy.ops.object.bake(type="AO", margin=margin, use_clear=False)
+
+                elif mode == "complete":
+                    print("Baking complete: full surface appearance")
+                    bpy.ops.object.bake(type="COMBINED", margin=margin, use_clear=False)
                 else:
-                    bpy.ops.object.bake(type="DIFFUSE", pass_filter={"DIRECT","INDIRECT"}, margin=scene.TLM_EngineProperties.tlm_dilation_margin, use_clear=False)
+                    bpy.ops.object.bake(type="DIFFUSE", pass_filter={"DIRECT","INDIRECT"}, margin=margin, use_clear=False)
                 
                 #Save between baking (to avoid lost textures)
                 #TODO! ATLASGROUP!

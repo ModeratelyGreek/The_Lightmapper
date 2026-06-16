@@ -703,6 +703,45 @@ class TLM_AtlasRefreshStats(bpy.types.Operator):
         _tlm_refresh_atlas_stats(context)
         return {'FINISHED'}
 
+class TLM_AtlasSelectNonAtlased(bpy.types.Operator):
+    bl_idname = "tlm.atlas_select_non_atlased"
+    bl_label = "Select Non-Atlased"
+    bl_description = ("Select every lightmap-enabled mesh object that is NOT packed into a "
+                      "valid atlas group (per-object bakes), including orphans whose atlas "
+                      "pointer references a group that no longer exists in the list")
+
+    def execute(self, context):
+        scene = context.scene
+        valid = {a.name for a in scene.TLM_AtlasList}
+        for obj in context.view_layer.objects:
+            obj.select_set(False)
+        count = 0
+        dangling = 0
+        active = None
+        for obj in context.view_layer.objects:
+            if obj.type != 'MESH':
+                continue
+            op = obj.TLM_ObjectProperties
+            if not op.tlm_mesh_lightmap_use:
+                continue
+            in_atlas = (op.tlm_mesh_lightmap_unwrap_mode == "AtlasGroupA"
+                        and op.tlm_atlas_pointer in valid)
+            if in_atlas:
+                continue
+            if op.tlm_mesh_lightmap_unwrap_mode == "AtlasGroupA":
+                dangling += 1   # claims an atlas group that isn't in the list
+            obj.select_set(True)
+            active = obj
+            count += 1
+        if active is not None:
+            context.view_layer.objects.active = active
+        if dangling:
+            self.report({'INFO'}, "Selected %d non-atlased object(s) (%d with dangling atlas pointers)"
+                        % (count, dangling))
+        else:
+            self.report({'INFO'}, "Selected %d non-atlased object(s)" % count)
+        return {'FINISHED'}
+
 class TLM_StartServer(bpy.types.Operator):
     bl_idname = "tlm.start_server"
     bl_label = "Start Network Server"
